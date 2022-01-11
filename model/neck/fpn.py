@@ -22,7 +22,7 @@ class FPN(nn.Module):
         self.project_convs = nn.ModuleList()
         self.out_convs = nn.ModuleList()
         for in_channel in in_channels:
-            project_conv = ConvBlock(in_channel, out_channel, 1, 
+            project_conv = ConvBlock(in_channel, out_channel, 1,
                                 norm_cfg=norm_cfg, act_cfg=act_cfg)
             self.project_convs.append(project_conv)
             out_conv = ConvBlock(out_channel, out_channel, 3, padding=1,
@@ -39,6 +39,7 @@ class FPN(nn.Module):
                     self.extra_downs.append(nn.MaxPool2d(1, 2))
                 else:
                     raise KeyError(f'down_sample type {extra_downsample} not supported')
+        self.init_weight()
 
     def forward(self, inputs):
         assert len(inputs) == self.num_in
@@ -61,3 +62,10 @@ class FPN(nn.Module):
                 outs.append(out)
         
         return tuple(outs)
+
+    def init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)

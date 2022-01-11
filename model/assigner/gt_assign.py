@@ -86,7 +86,7 @@ def fcos_assigner(gt_bboxes,
         areas[~mask_match] = INF
         min_area, min_area_ind = torch.min(areas, dim=-1)   #[B,w*h]
         
-        cls_target = gt_labels[:,:].gather(1, min_area_ind)   #[B,w*h]      
+        cls_target = gt_labels[:,:].gather(1, min_area_ind)   #[B,w*h]
         # print(cls_target.shape)
         cls_target[min_area == INF] = bg_class_id # set to bg             #[B,w*h]
         reg_target = offsets.gather(-2, min_area_ind.reshape(batch_size, num_pts, 1, 1).repeat(1,1,1,4)).squeeze(2) #[B,w*h,4]

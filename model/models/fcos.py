@@ -19,9 +19,10 @@ class Fcos(nn.Module):
         self.num_classes = num_classes
         self.strides = (8, 16, 32, 64, 128)
         self.conf_thres = 0.3
+        # self.init_weight()
 
         self.cls_loss = FocalLoss()
-        self.bbox_loss = IouLoss()
+        self.bbox_loss = IouLoss(iou_type='giou', mode='linear')
         self.center_loss = nn.BCEWithLogitsLoss()
         self.cls_weight = 1.0
         self.bbox_weight = 1.0
@@ -39,6 +40,16 @@ class Fcos(nn.Module):
         outs = self.head(outs)
         return outs
 
+    # def init_weight(self):
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Conv2d):
+    #             nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+    #             if m.bias is not None:
+    #                 nn.init.constant_(m.bias, 0)
+    #         elif isinstance(m, nn.BatchNorm2d):
+    #             nn.init.constant_(m.weight, 1)
+    #             nn.init.constant_(m.bias, 0)
+
     def generate_points(self, input_w, input_h):
         """
         Generate anchor points
@@ -54,7 +65,10 @@ class Fcos(nn.Module):
         for stride in self.strides:
             w = math.ceil(input_w / stride)
             h = math.ceil(input_h / stride)
-            points.append(generate_grid_points(h, w, stride))
+            level_points = generate_grid_points(h, w, stride)
+            # level_points[:, 0] /= input_w
+            # level_points[:, 1] /= input_h
+            points.append(level_points)
         return points
 
     def calc_loss(self, cls_preds, center_preds, reg_preds, 
@@ -114,10 +128,11 @@ class Fcos(nn.Module):
         loss = self.cls_weight * cls_loss + self.center_weight * center_loss + self.bbox_weight * bbox_loss
         return loss
 
-    def postprocess(self, cls_preds, center_preds, reg_preds, points):
+    def postprocess(self, cls_preds, center_preds, reg_preds, points, input_w, input_h):
         detections = []
         batch_size = cls_preds[0].shape[0]
         anchor_pts = torch.cat(points)
+        
         for b in range(batch_size):
             cls_outs = [cls_pred[b].reshape(-1, self.num_classes) for cls_pred in cls_preds]
             center_outs = [center_pred[b].reshape(-1) for center_pred in center_preds]
@@ -125,10 +140,12 @@ class Fcos(nn.Module):
             cls_outs = torch.cat(cls_outs, dim=0)
             center_outs = torch.cat(center_outs, dim=0)
             reg_outs = torch.cat(reg_outs, dim=0)
-
+            cls_outs = cls_outs.sigmoid()
+            center_outs = center_outs.sigmoid()
+ 
             max_scores, max_idx = torch.max(cls_outs, dim=1)
             scores = max_scores * center_outs
-            mask_pos = ((max_idx != 0) & (scores > self.conf_thres))
+            mask_pos = ((max_idx != self.num_classes) & (scores > self.conf_thres))
             offsets = reg_outs[mask_pos]
             classes = max_idx[mask_pos]
             scores = scores[mask_pos]

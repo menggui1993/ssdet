@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from model.base_module.conv_block import ConvBlock
 
-
 class Bottleneck(nn.Module):
     """
     Basic residual block in Resnet50. The block structure is
@@ -91,7 +90,8 @@ class ResNet(nn.Module):
     def __init__(self,
                  out_stages = (2, 3, 4),
                  vd = False,
-                 dcn_stages = ()):
+                 dcn_stages = (),
+                 pretrained=True):
         super(ResNet, self).__init__()
         self.out_stages = out_stages
         self.vd = vd
@@ -119,8 +119,11 @@ class ResNet(nn.Module):
                 ResStage(b_count, cur_channel, self.block_channels[i], self.block_strides[i], vd=vd, dcn=dcn))
             self.stages.append(module_name)
             cur_channel = self.block_channels[i]
+        if pretrained:
+            self.load_state_dict(torch.load('checkpoint/resnet50.pth'))
+        else:
+            self.init_weight()
         
-
     def forward(self, x):
         outs = []
         if self.vd:
@@ -136,5 +139,18 @@ class ResNet(nn.Module):
             x = block(x)
             if i+1 in self.out_stages:
                 outs.append(x)
-        
         return tuple(outs)
+
+    def init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+if __name__ == '__main__':
+    model = ResNet()
+    # model.load_state_dict(torch.load('resnet50.pth'))

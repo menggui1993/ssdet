@@ -13,7 +13,7 @@ class YoloDataset(data.Dataset):
         self.labels = []
         self.max_objs = max_objs
         if transforms is None:
-            self.transforms = Compose([Resize(size=(640,416)),
+            self.transforms = Compose([Resize(size=(640,640)),
                                        Normalize(),
                                        ToTorchTensor()])
         else:
@@ -22,6 +22,8 @@ class YoloDataset(data.Dataset):
         num_classes = len(classes)
         for _, _, files in os.walk(img_dir):
             for img_file in files:
+                if (Path(img_file).suffix not in ['.jpeg','.jpg','.png','.bmp']):
+                    continue
                 label_file = Path(img_file).stem + '.txt'
                 label_file = os.path.join(label_dir, label_file)
                 if not os.path.exists(label_file):
@@ -34,12 +36,13 @@ class YoloDataset(data.Dataset):
                 gts = cls_labels.shape[0]
                 pad_cls_labels = np.ones((max_objs,), dtype=cls_labels.dtype)*num_classes
                 pad_bbox_labels = np.zeros((max_objs,4), dtype=bbox_labels.dtype)
-                if gts < max_objs:
-                    pad_cls_labels[:gts] = cls_labels
-                    pad_bbox_labels[:gts, :] = bbox_labels
-                else:
+                if gts > max_objs:
                     pad_cls_labels = cls_labels[:max_objs]
                     pad_bbox_labels = bbox_labels[:max_objs, :]
+                elif gts > 0:
+                    pad_cls_labels[:gts] = cls_labels
+                    pad_bbox_labels[:gts, :] = bbox_labels
+
                 self.labels.append((pad_cls_labels, pad_bbox_labels))
 
     def __getitem__(self, index):
@@ -50,6 +53,9 @@ class YoloDataset(data.Dataset):
 
     def __len__(self):
         return len(self.imgs)
+
+    def get_num_classes(self):
+        return len(self.classes)
 
     def readAnnotation(self, label_file, img_file):
         cls_labels = []
@@ -72,8 +78,8 @@ class YoloDataset(data.Dataset):
                 top = (ct_y - h/2) * img_h
                 bot = (ct_y + h/2) * img_h
                 bbox_labels.append([left, top, right, bot])
-        cls_labels = np.array(cls_labels)
-        bbox_labels = np.array(bbox_labels)
+        cls_labels = np.array(cls_labels, dtype=np.int64)
+        bbox_labels = np.array(bbox_labels, dtype=np.float64)
         return cls_labels, bbox_labels
 
 if __name__ == '__main__':

@@ -47,6 +47,8 @@ class Resize(object):
                 pad_img = np.zeros((dst_h, dst_w, 3), dtype=img.dtype)
                 pad_img[:dst_h, :tmp_w] = img
                 bbox_labels = bbox_labels * scale_h
+            # bbox_labels[:, 0::2] /= dst_w
+            # bbox_labels[:, 1::3] /= dst_h
             return pad_img, cls_labels, bbox_labels
         else:
             img = cv2.resize(img, self.size)
@@ -93,7 +95,18 @@ class ToTorchTensor(object):
         pass
 
     def __call__(self, img, cls_labels, bbox_labels):
-        img = torch.from_numpy(img).permute(2, 0, 1)
+        img = torch.from_numpy(img.astype(np.float32)).permute(2, 0, 1)
         cls_labels = torch.from_numpy(cls_labels)
         bbox_labels = torch.from_numpy(bbox_labels)
         return img, cls_labels, bbox_labels
+
+from torchvision import transforms
+transforms.ColorJitter()
+class ColorJitter(object):
+    def __init__(self, brightness, contrast, saturation):
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+
+    def __call__(self, img, cls_labels, bbox_labels):
+        pass
