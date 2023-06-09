@@ -17,6 +17,11 @@ head即检测头，从特征得到最后的检测框信息，物体的类别和�
 
 ![dw_conv](dw_conv.jpg)
 
+#### point-wise conv
+depth-wise conv由于每张输出特征图只对应一张输入特征图，因此缺少多特征之间的融合。因此，还有point-wise conv，如下图所示，即卷积核为1x1的卷积，实质上就是对特征图之间进行加权融合。point-wise conv常常用于改变通道数。同时，一个point-wise conv和一个depth-wise conv组合可以获得与一个原始convolution相同尺寸的输出，但运算量和参数量都大大减少，也被称为seperable convolution。
+
+![pw_conv](pw_conv.jpg)
+
 #### group conv
 group conv则是在普通卷积和depth-wise conv之间。每一张输出的特征图，对应一个group中的几张输入特征图。当group数量等于输入通道数时，就是depth-wise conv。假设输入通道数为$c_{in}$，输出通道数为$c_{out}$，group组数为$g$。则filter数量为$(c_{in}/g) * (c_{out}/g) * g = c_{in}*c_{out}/g$。
 
@@ -52,6 +57,20 @@ groupnorm在HWG上做归一化，每个样本的每个通道组求一个均值�
 ![res-blk](resnet-block.svg)
 
 即在网络常规的一层层运算基础上，加入skip connection，跳过几层的连接。
+
+### attention机制
+attention是后面提到的transformer的核心。其实在这之前，也有不少对于attention在神经网络中的应用。attention本质上就是对于特征的权重计算和加权组合。
+
+#### SENet
+[Squeeze and Excitation Network](https://arxiv.org/abs/1709.01507)中提出的SE模块，实质上就是channel attention。通过一个global average pooling，得到1x1xC的特征，也就是每个通道一个特征值。然后通过两个FC层（通道数先降后升），之后接上一个sigmoid得到激活值（权重）。最后以这个权重乘上原始特征，调整特征。SE模块的一大优点是它本身不对特征通道形状改变，运算量也不大，可以无缝接入模型的任意位置。
+
+![senet](senet.png)
+
+#### CBAM
+[Convolutional Block Attention Module](https://arxiv.org/abs/1807.06521)在SENet的基础上，又加上了spatial attention。另外在pooling时，同时用average pooling和max pooling提取两套特征，融合之后作为计算权重的特征输入。可以看到，channel attention与SENET一样，对HW维度提取，而spatial attention对C维度提取。
+
+![cbam](cbam.png)
+![cam_sam](cam_sam.png)
 
 ### <span id="neck">neck</span>
 在backbone网络之后，我们得到的是下采样不同比例的几组特征，通过neck我们将不同比例的特征进行融合。
@@ -103,6 +122,12 @@ ROI pooling中有两处近似操作，对结果的准确性有一定影响。
 
 因此，在[mask-rcnn](https://arxiv.org/abs/1703.06870)中提出了ROI align。在计算框位置和划分区域时都保留小数，然后在每个区域中通过双线性差值得到四个点的特征值，然后用max_pooling得到每个区域的特征值。
 ![roi-align](roi_align.png)
+
+#### Faster Rcnn
+[Faster-Rcnn](https://arxiv.org/abs/1506.01497)是在rcnn和fast-rcnn基础上优化得到，是二阶段目标检测网络的最经典的代表。
+![faster-rcnn](faster_rcnn.jpg)
+
+首先通过backbone提取图像特征。经过RPN得到proposal框（只包含前景背景二分类，以及检测框基于anchor的偏移）。通过roi pooling从图像特征中提取每一个proposal的特征。最后经过检测头，输出分类结果以及更准确的框位置。
 
 ### transformer
 [Attention is all you need](https://arxiv.org/abs/1706.03762)发表之后，transformer模型横扫了NLP领域。但在视觉领域，transformer的应用却没有取得很好的效果，直到ViT的出现，之后大量transformer模型如雨后春笋般涌现出来。
@@ -200,7 +225,7 @@ $$IOU\_Loss = 1 - IOU$$
 
 **GIOU**
 定义包含两个框的最小外接框$C$，
-$$GIOU = IOU - \frac{|C \backslash (A \cap B)|}{|C|}$$
+$$GIOU = IOU - \frac{|C \backslash (A \cup B)|}{|C|}$$
 
 **DIOU**
 定义两框中心的距离为$\rho(A,B)$，包含两框的最小外接框的对角线距离$c$
@@ -209,8 +234,16 @@ $$GIOU = IOU - \frac{|C \backslash (A \cap B)|}{|C|}$$
 $$DIOU = IOU - \frac{\rho^2(A,B)}{c^2}$$
 
 ## 数据增强
-### MOSAIC
-### MIXUP
+
+### 多图混合
+
+**MixUp**
+
+**Cutout**
+
+**CutMix**
+
+**Mosaic**
 
 ## 正负样本分配
 目标检测网络的训练时，需要将GT对应到anchor上，分配每个anchor作为正样本或负样本。不同的分配策略对训练结果也有很大的影响。
@@ -219,6 +252,11 @@ $$DIOU = IOU - \frac{\rho^2(A,B)}{c^2}$$
 * 检测框与GT的IOU
 * anchor中心在GT框内
 * 检测框的置信度
+
+### OHEM
+[Online Hard Example Mining](https://arxiv.org/abs/1604.03540)，意在通过加强难例，忽略简单的样本，来解决正负样本不均衡问题，尤其对于二阶段网络。
+
+对于通过RPN得到的proposals，计算loss，根据loss降序排列，选取难例来作为训练的样本。同时做NMS来防止重复。
 
 ### ATSS
 [ATSS](https://arxiv.org/abs/1912.02424)，在这篇论文中，作者通过实验论证了，anchor-based和anchor-free模型的效果差距其实来源于训练中对正负样本的分配策略不同。他们提出了一种新的正负样本分配策略。下图是ATSS算法。
@@ -261,6 +299,8 @@ $$c^{fg} = c_{cls} + \alpha c_{reg} + c_{cp}$$
 
 ## 训练策略
 ### optimizer
+[optimizer](https://www.ruder.io/optimizing-gradient-descent/)
+
 ### warmup
 
 ## 其他trick
